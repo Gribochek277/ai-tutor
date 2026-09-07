@@ -1,0 +1,24 @@
+repository: serhii/ai-tutor
+commit: b9e87ca1c6ff9c5a86716fd9adaa5cde6b9a39ae
+date: 2026-09-07T11:52:05+03:00
+author: Serhii <36171312+Gribochek277@users.noreply.github.com>
+branches: main
+
+message:
+Study Mode: stateful tutoring overlay for the Pi coding agent
+AI-Tutor extension (built from scratch per plan.md). Orchestration layer over
+the Pi agent loop: session -> learner state -> pedagogical policy -> prompt ->
+LLM -> structured evaluation -> state update.
+
+- StudySession + LearnerState state machine (diagnostic->...->complete)
+- per-turn compact tutor prompt (canonical state injection, compaction-safe)
+- structured tutor protocol (fenced \`\`\`study JSON block parsed in turn_end)
+- custom tools: study_get_state / _record_observation / _advance_phase / _get_hint / _complete
+- /study commands, widget + status footer UI
+- session + long-term persistence (~/.pi/agent/study/learners)
+- adaptive difficulty; smoke.mjs + harness.mjs test suites (all passing)
+
+---
+Source code is NOT published on GitHub.
+README (if any) is available in the repo root.
+If you need the code, email: sergeyalpatov1@gmail.com
