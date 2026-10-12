@@ -1,150 +1,131 @@
 > Sanitized mirror of Forgejo `serhii/ai-tutor`. Source code is not published here.
 >
 > Commit texts: `commits/`. Need the code? Email: sergeyalpatov1@gmail.com
-> Source: Forgejo `serhii/ai-tutor` | Synced: 2026-10-05T01:37:09Z
+> Source: Forgejo `serhii/ai-tutor` | Synced: 2026-10-12T11:11:31Z
 
 ---
 
-# Study Mode — a tutoring overlay for the Pi coding agent
+# Study Mode — a personal tutor for the Pi coding agent
 
-**AI-Tutor**: a Pi extension that turns the ordinary agent loop into a stateful
-tutor. It implements the architecture from `plan.md`:
-`session → learner state → pedagogical policy → prompt → LLM → evaluation →
-state update`.
-
-This is the standalone repo for the extension (created from scratch). The
-extension entry point is `index.ts` (registered via `package.json` →
-`pi.extensions`). To use it:
-
-- **as a Pi package:** point Pi's settings `extensions`/`packages` at this repo
-  (or `pi install` it), or
-- **project-local:** copy/symlink this directory to `<project>/.pi/extensions/`
-  so it loads only inside that project.
-
-## What it does
-
-When you start a study session, Study Mode becomes an **orchestration layer**
-over the normal agent loop. The LLM stays the LLM; the extension owns *how*
-teaching happens:
+A Pi extension that turns the agent into a one-on-one tutor. The model teaches
+and grades; a small engine decides **what comes next** from a learner model
+that lasts across sessions.
 
 ```
-User input
-   │
-   ▼
-before_agent_start ──► inject compact per-turn tutor prompt (canonical state)
-   │
-   ▼
-        LLM (tutor) ──► reply to the learner
-   │                        │
-   │                        └─► optional ```study JSON block (structured protocol)
-   ▼
-turn_end ──► parse block ──► update learner state (known/weak/mistakes/difficulty)
-   │
-   ▼
-widget + status footer reflect the session
+/study start "Python generators" --level beginner
 ```
 
-Key properties:
+## How a sitting goes
 
-- **State machine** — `diagnostic → explain → guided-practice →
-  independent-practice → assessment → reflection → complete`.
-- **Pedagogical engine** — strategy is chosen per phase and difficulty
-  (Socratic, Explain, Guided Practice, Retrieval, Scaffolding, Challenge).
-- **Per-turn compact prompts** — no giant system prompt. Each turn gets a
-  small, focused tutor prompt that injects the canonical learner state, so the
-  engine never depends on conversation history (compaction-safe).
-- **Structured tutor protocol** — the model may end its reply with a small
-  fenced ````study```` JSON block. The engine parses and *validates* it; the
-  model can never corrupt state directly.
-- **Custom tools** — `study_get_state`, `study_record_observation`,
-  `study_advance_phase`, `study_get_hint`, `study_complete`. The engine
-  validates every change.
-- **Persistence** — session state is stored as a custom session entry
-  (survives reload/resume/compaction); long-term learner mastery is saved to
-  `~/.pi/agent/study/learners/default.json`.
-- **Adaptive difficulty** — three clean turns with no reported mistakes nudge
-  difficulty up; major mistakes lower it.
+```
+warm-up        2-3 spaced-repetition questions that are due (any topic, interleaved)
+per concept    probe → teach (worked example) → faded practice → solo practice → mastered
+wrap-up        after the sitting time: exit ticket + "next review in N days"
+```
+
+- **Probe first.** If the learner already knows a concept, the explanation is
+  skipped (expertise reversal) and they go straight to practice.
+- **Mastery learning.** A concept is mastered when the BKT estimate is ≥ 0.9
+  *and* the learner has answered two independent questions in a row without
+  hints. Answers reached with hints count as partial.
+- **Spaced repetition.** Mastered concepts get an FSRS-4.5 card (default
+  parameters, 90 % target retention). Due cards come back as warm-up questions
+  in later sittings, interleaved across topics. Forgotten concepts drop back
+  to practice.
+- **Misconceptions.** The tutor records the learner's specific wrong belief.
+  It is shown again when the concept comes back and is cleared after two
+  correct answers. Errors made with confidence 3 ("sure") come back sooner
+  (hypercorrection).
+- **Difficulty.** Based on accuracy over the last 10 graded answers, aiming
+  for ~85 % success: above 90 % → harder, below 70 % → easier.
+- **Personal examples.** A learner profile (language, background, interests)
+  is collected once during onboarding and used for examples in every topic.
+- **Concept map.** Generated once per topic by a single model call outside the
+  conversation (`id | title | prerequisites` lines). Topics are taught in
+  prerequisite order. Edit the map with `/study plan`; progress is kept for
+  ids that stay the same. If generation fails, a heuristic skeleton is used.
+
+## Keeping the context small
+
+The extension is built for local models, where context size and prompt
+re-processing matter more than the price per token.
+
+| What | How |
+|---|---|
+| Stable system prompt | Tutor rules never change during a session, so the provider prompt cache or the llama.cpp KV cache keeps the prefix. The old version rewrote the system prompt every turn. |
+| Lean mode (default) | Replaces the coding-agent prompt and turns off all tools, AGENTS.md and skills. The first turn is about 700 input tokens. `/study tools full` brings the coding agent back with a tutor section on top. |
+| One hidden note per turn | About 100–200 tokens: the current item, the learner profile, and what to do if the answer is correct or wrong. Only the newest note stays in context. |
+| Context window | Learner state lives in the engine, so only the last turns are needed. When 14 turns pile up, the context is cut back to 6 at once. The cut point moves rarely, so the cache stays valid between cuts. Messages from before `/study start` are dropped. |
+| No tools for bookkeeping | The tutor reports with one hidden line at the end of a reply. A tool call would cost an extra model round-trip. |
+
+### The protocol
+
+```
+[[study kc=yield-keyword r=wrong h=1 c=3 m="thinks yield returns a list"]]
+[[profile lang=ru bg="C# backend dev" interests="games"]]
+```
+
+`r` is `correct|partial|wrong`, `h` is the number of hints given, `c` is the
+learner's confidence (1–3), `m` is the misconception. The parser is lenient
+(`kc: x`, `r=right`, tags wrapped in code fences). Tags are stripped from the
+stored message, so the learner never sees them and they never come back into
+the context. The note ends with a ready-made grade line for the current
+concept, because small models follow the most recent instruction best.
 
 ## Commands
 
 ```
-/study start <topic> [--goal "..."] [--level "..."]   start a session
-/study stop                                            stop + save
-/study pause / resume                                  pause / resume
-/study status                                          show full state
-/study plan                                            show the learning plan
-/study mode <teach|practice|review|quiz|conversation>  switch mode
-/study reset                                           reset learner state
-/study complete                                        mark complete
-/study review                                          long-term mastery review
+/study start <topic> [--goal ..] [--level ..] [--tools lean|full]   start or continue a topic
+/study start                      continue the last topic
+/study stop | pause | resume      pause = normal agent until resume
+/study learn | review | quiz      review = due cards from all topics; quiz = 5 questions, no hints
+/study skip                       "I already know this" → mark the current concept mastered
+/study status                     concepts with step, mastery, memory, misconceptions
+/study stats                      all topics and the next review
+/study plan                       view/edit the concept map
+/study profile                    edit language / background / interests / minutes per sitting
+/study tools lean|full
+/study reset                      clear progress on the current topic
 ```
 
-Examples:
+## Storage
 
-```
-/study start Japanese N5
-/study start "C# async/await" --goal "understand continuations" --level intermediate
-/study start "linear algebra"
-```
+- **Learner model:** `~/.pi/agent/study/learner.json` (override with
+  `STUDY_HOME`). Holds the profile, topics, concepts, BKT, FSRS cards and
+  misconceptions. It is shared by all sessions. Learning that happened stays
+  recorded even if you branch the conversation.
+- **Session state:** a `study-session` custom entry (current item, sitting
+  timer, context floor, tool mode). It is rebuilt from the active branch on
+  `session_start` / `session_tree`.
 
-## How it feels
-
-Normal Pi:
-
-```
-you:   объясни async/await
-agent: [dumps an explanation]
-```
-
-Study Mode:
-
-```
-you:   /study start "C# async/await"
-you:   научи меня async/await
-agent: (diagnostic → asks questions to gauge your level)
-       (explain → layered intuition → example → formal)
-       (guided-practice → hint → your attempt → correction)
-       (independent-practice → you solve → retrieval practice)
-       (assessment → checkpoint → reflection)
-```
-
-The top widget shows `Phase`, `Progress`, `Difficulty` and the current plan
-step. Because the learner state is injected every turn, long sessions survive
-compaction without losing context.
+The v1 file (`learners/default.json`) is not migrated: it only held one
+mastery number per topic.
 
 ## Layout
 
 ```
-.pi/extensions/study-mode/
-├── index.ts          # wiring: commands, tools, event hooks
-├── src/
-│   ├── types.ts      # StudySession, LearnerState, phases, actions
-│   ├── store.ts      # state machine + persistence (session + long-term)
-│   ├── pedagogy.ts   # strategy selection + difficulty
-│   ├── prompt.ts     # compact per-turn tutor prompt
-│   ├── parser.ts     # structured ```study JSON → StudyAction[]
-│   ├── tools.ts      # custom study tools
-│   └── ui.ts         # widget + status footer
-├── smoke.mjs         # pure-logic tests  (node jiti smoke.mjs)
-├── harness.mjs       # mock-Pi wiring test (node jiti harness.mjs)
-└── package.json
+index.ts            wiring: hooks, /study command, concept-map generation
+src/engine.ts       all learning decisions (deep module, pure)
+src/memory.ts       BKT + FSRS-4.5
+src/prompt.ts       static tutor rules + per-turn note
+src/protocol.ts     [[study]] / [[profile]] parser and stripper
+src/context.ts      note de-duplication + context window with hysteresis
+src/conceptMap.ts   map prompt, parser, editor format, fallback
+src/storage.ts      learner.json (atomic writes)
+src/ui.ts           widget, status, reports
+src/types.ts        domain types
+smoke.mjs           pure-logic tests
+harness.mjs         mock-Pi end-to-end wiring test
 ```
 
 ## Tests
 
 ```
-node <pi>/node_modules/.bin/jiti smoke.mjs
-node <pi>/node_modules/.bin/jiti harness.mjs
+JITI=<pi>/node_modules/jiti/lib/jiti-cli.mjs
+node $JITI smoke.mjs
+node $JITI harness.mjs
 ```
 
-(`node_modules` here are symlinks to the global Pi packages so type-checking
-and tests resolve — Pi itself resolves these at runtime via jiti.)
-
-## Notes / known simplifications
-
-- Each state change appends a custom session entry. Custom entries do **not**
-  consume LLM context, so this is safe, but it does grow the session file.
-- The learning plan is a heuristic skeleton; the tutor model refines it in
-  practice.
-- The structured block is optional; if the model omits it, the engine only
-  nudges difficulty on clean turns and otherwise leaves state unchanged.
+For type checking, link the Pi packages into `node_modules/` (ignored by git):
+`@earendil-works/{pi-coding-agent,pi-ai,pi-tui,pi-agent-core}` and
+`@types/node` from Pi's own `node_modules`, then run `npx -p typescript tsc`.

@@ -1,0 +1,39 @@
+repository: serhii/ai-tutor
+commit: 260d807026e5aeef5809bb4d1fc6014aa4826e97
+date: 2026-10-12T14:11:22+03:00
+author: Serhii <serhii@localhost>
+branches: main
+
+message:
+Personal tutor engine: mastery learning, FSRS reviews, small stable context
+Learning model
+- Per-concept loop probe -> teach -> faded -> solo -> mastered, driven by the
+  engine; the model only teaches and grades.
+- BKT mastery estimate; mastery needs p >= 0.9 and two unaided correct answers.
+- FSRS-4.5 cards for mastered concepts; warm-up reviews at the start of a
+  sitting, interleaved across topics; forgotten concepts return to practice.
+- Misconception log with hypercorrection priority; difficulty from rolling
+  accuracy (target ~85%); learner profile shared by all topics.
+- Concept map generated once per topic (editable via /study plan), with a
+  heuristic fallback. Sitting timer with exit ticket.
+
+Context / tokens
+- Static tutor prompt via systemPromptOptions instead of rewriting the system
+  prompt every turn (keeps provider / llama.cpp prefix cache valid).
+- Lean mode: tutor-only prompt, no tools, AGENTS.md or skills.
+- One small hidden note per turn; only the newest is kept in context.
+- Context window with hysteresis; pre-study messages dropped.
+- Single [[study ...]] line instead of 5 tools + JSON block; stripped from
+  stored messages.
+
+Fixes
+- Difficulty no longer rises on turns without a report.
+- Cyrillic topics no longer collide on an empty storage key.
+- Session state rebuilt from the active branch, not all entries.
+- Sessions no longer double-counted on stop + shutdown.
+
+---
+Source code is NOT published on GitHub.
+My code is hosted on a private server - this repository only reflects my working activity.
+README (if any) is available in the repo root.
+If you need the code, email: sergeyalpatov1@gmail.com
