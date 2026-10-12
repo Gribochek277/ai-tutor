@@ -1,0 +1,38 @@
+repository: serhii/ai-tutor
+commit: fea5a7f1a2763f402701bf903d4d5183f9c20218
+date: 2026-10-12T14:45:03+03:00
+author: Serhii <serhii@localhost>
+branches: main
+
+message:
+Learning tracks, auto-found materials, placement, projects, fallback grader
+Tracks
+- /study track "<goal>": the model plans 6-14 modules with prerequisites and a
+  per-module scope; the plan is editable before start (/study track edit later).
+- Modules are prepared lazily on entry: concept map (with cross-module
+  "module/concept" prerequisites), capstone project, materials.
+- Placement check at module start (up to 4 spread questions); all right ->
+  remaining concepts need one check; two misses -> stop testing.
+- Bridge refreshers for faded prerequisites from other modules.
+- Capstone project per module; coding tools are enabled for project turns in
+  lean mode (project_tools: auto). Finished module -> next unlocked module.
+
+Materials
+- Model-suggested resources + search queries; links verified over HTTP
+  (invented ones become search hints); web search via SearXNG (if configured)
+  or DuckDuckGo HTML. Editable list (/study materials), own items kept.
+- Module intro presents materials; teaching a concept points to a matching one.
+
+Grading reliability (found in live runs with haiku)
+- Grade line now goes first and is the last instruction of the note.
+- "I don't know" is graded wrong; no teaching during placement.
+- Fallback grader call when the tutor forgets the line; it sees the tutor's
+  response and returns NONE when the question had to be repeated.
+- study-grade audit entries (source: tutor | fallback).
+- Tags hidden in the TUI while streaming (markdown transformer).
+
+---
+Source code is NOT published on GitHub.
+My code is hosted on a private server - this repository only reflects my working activity.
+README (if any) is available in the repo root.
+If you need the code, email: sergeyalpatov1@gmail.com
